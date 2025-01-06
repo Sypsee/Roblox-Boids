@@ -2,13 +2,14 @@ local solver = {}
 
 local maxNeighbourRadius = 20
 local maxViewAngle = -0.5
-local maxViewRange = 10
-local cohesionFactor = 0.2
+local maxViewRange = 5
+local cohesionFactor = 1.0
 local alignmentFactor = 1.0
-local seprationFactor = 0.9
-local obstacleSeprationFactor = 100
-local targetFactor = 0.5
-local sepratingDistance = 4
+local seprationFactor = 1.0
+local obstacleSeprationFactor = 10
+local targetFactor = 1.0
+local sepratingDistance = 1
+local maxSteeringSpeed = 3
 
 function isNan(n : number) : boolean
     return n ~= n
@@ -16,6 +17,15 @@ end
 
 function isNanVec3(v : Vector3) : boolean
     return isNan(v.X) or isNan(v.Y) or isNan(v.Z)
+end
+
+function clampMagnitude(v : Vector3, maxMagnitude : number)
+    if v.Magnitude > maxMagnitude then
+        local scale = maxMagnitude / v.Magnitude
+        v *= scale
+    end
+    
+    return v
 end
 
 -- Gives all possible points the boid can check to go to for avoiding obstacles
@@ -39,7 +49,7 @@ function solver.GetDirections(numPoints : number) : {Vector3}
     return points
 end
 
-local directions = solver.GetDirections(1000)
+local directions = solver.GetDirections(300)
 
 function solver.FindUnobstructedDirection(boid) : Vector3
     local bestDir = boid.CFrame.LookVector
@@ -48,9 +58,9 @@ function solver.FindUnobstructedDirection(boid) : Vector3
     for i, _dir in directions do
         local dir : Vector3 = boid.CFrame:VectorToWorldSpace(_dir)
         local res = workspace:Raycast(boid.Position, dir * maxViewRange)
-        local isPathNotObstructed = res and res.Instance
+        local isPathObstructed = res and res.Instance
 
-        if not isPathNotObstructed then
+        if not isPathObstructed then
             bestDir = dir
             foundBest = true
             break
@@ -58,6 +68,11 @@ function solver.FindUnobstructedDirection(boid) : Vector3
     end
 
     return bestDir, foundBest
+end
+
+function solver.SteerTowards(v : Vector3, velocity : Vector3, maxSpeed : number)
+    local newV = v.Unit * maxSpeed - velocity
+    return clampMagnitude(newV, maxSteeringSpeed)
 end
 
 function solver.Solve(dt : number, boids, target : Vector3)
@@ -86,7 +101,7 @@ function solver.Solve(dt : number, boids, target : Vector3)
 
         if target then
             local diff = target - boid.Position
-            local targetForce = (diff.Unit * boid.MaxSpeed - boid.Velocity) / (adjBoids + 1) * targetFactor
+            local targetForce = solver.SteerTowards(diff, boid.Velocity, boid.MaxSpeed) / (adjBoids + 1) * targetFactor
 
             if not isNanVec3(targetForce) then
                 force += targetForce
@@ -99,7 +114,7 @@ function solver.Solve(dt : number, boids, target : Vector3)
             local unobstructedDir, foundBest = solver.FindUnobstructedDirection(boid)
 
             if foundBest then
-                local unobstructedForce = (unobstructedDir.Unit * boid.MaxSpeed - boid.Velocity) * obstacleSeprationFactor
+                local unobstructedForce = solver.SteerTowards(unobstructedDir, boid.Velocity, boid.MaxSpeed) * obstacleSeprationFactor
 
                 if not isNanVec3(unobstructedForce) then
                     force += unobstructedForce
@@ -111,8 +126,11 @@ function solver.Solve(dt : number, boids, target : Vector3)
             local avgPos = sumAdjPos / adjBoids
             local avgDir = sumAdjDir / adjBoids
 
-            local cohesionForce = (avgPos * boid.MaxSpeed - boid.Position) * cohesionFactor
-            local alignmentForce = (avgDir * boid.MaxSpeed - boid.Velocity) * alignmentFactor
+            local offsetToCenter = avgPos - boid.Position
+
+            local alignmentForce = solver.SteerTowards(avgDir, boid.Velocity, boid.MaxSpeed) * alignmentFactor
+            local cohesionForce = solver.SteerTowards(offsetToCenter, boid.Velocity, boid.MaxSpeed) * cohesionFactor
+            local seprationForce = solver.SteerTowards(dir, boid.Velocity, boid.MaxSpeed) * seprationFactor
 
             if not isNanVec3(cohesionForce) then
                 force += cohesionForce
@@ -120,11 +138,9 @@ function solver.Solve(dt : number, boids, target : Vector3)
             if not isNanVec3(alignmentForce) then
                 force += alignmentForce
             end
-        end
-
-        local seprationForce = (dir * boid.MaxSpeed - boid.Velocity) * seprationFactor
-        if not isNanVec3(seprationForce) then
-            force += seprationForce
+            if not isNanVec3(seprationForce) then
+                force += seprationForce
+            end
         end
 
         if not isNanVec3(force) then

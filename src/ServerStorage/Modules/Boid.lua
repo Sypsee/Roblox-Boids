@@ -1,6 +1,15 @@
 local boid = {}
 boid.__index = boid
 
+function clampMagnitude(v : Vector3, maxMagnitude : number)
+    if v.Magnitude > maxMagnitude then
+        local scale = maxMagnitude / v.Magnitude
+        v *= scale
+    end
+    
+    return v
+end
+
 function boid.Create(maxSpeed)
     local self = setmetatable({
         Position = Vector3.zero,
@@ -18,12 +27,10 @@ end
 
 function boid:AddForce(force : Vector3)
     self.Velocity += force
-
-    if (self.Velocity.Magnitude > self.MaxSpeed) then
-        self.Velocity = self.Velocity.Unit * self.MaxSpeed
-    end
+    self.Velocity = clampMagnitude(self.Velocity, self.MaxSpeed)
 end
 
+-- Just for the boid solver to access boidParts CFrame
 function boid:SetCFrame(cframe : CFrame)
     self.CFrame = cframe
 end

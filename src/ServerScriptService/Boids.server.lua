@@ -11,7 +11,7 @@ local boids : {Boid} = {}
 local boidParts : {Part} = {}
 
 local maxBoids = 100
-local targetPos = Vector3.new(0, 20, 0)
+local targetPos = Vector3.new(0, 0, 0)
 
 task.spawn(function()
     for i=0, maxBoids do
@@ -19,8 +19,8 @@ task.spawn(function()
         boidPart.Parent = workspace.Boids
         table.insert(boidParts, boidPart)
         
-        local boid = boidsService.Create(math.random(20, 50))
-        boid.Velocity = Vector3.new(math.random(0, 15), math.random(0, 15), math.random(0, 15))
+        local boid = boidsService.Create(math.random(2, 5))
+        boid.Velocity = boidPart.CFrame.LookVector * boid.MaxSpeed
         table.insert(boids, boid)
         
         runService.Heartbeat:Wait()
@@ -34,6 +34,7 @@ runService.Heartbeat:Connect(function(dt)
         boid:Update(dt)
 
         boidParts[i].Position = boid.Position
+        boidParts[i].Att1.Position = boid.Position.Unit + boid.Velocity.Unit * 5
         boidParts[i].CFrame = CFrame.lookAlong(boid.Position, boid.Position + boid.Velocity, boidParts[i].CFrame.UpVector)
         boid:SetCFrame(boidParts[i].CFrame)
     end
