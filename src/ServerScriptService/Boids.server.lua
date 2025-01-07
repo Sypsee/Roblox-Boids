@@ -10,22 +10,9 @@ type Boid = typeof(boidsService)
 local boids : {Boid} = {}
 local boidParts : {Part} = {}
 
-local maxBoids = 100
-local targetPos = Vector3.new(0, 0, 0)
-
-task.spawn(function()
-    for i=0, maxBoids do
-        local boidPart : Part = replicatedStorage.Assets.Boid:Clone()
-        boidPart.Parent = workspace.Boids
-        table.insert(boidParts, boidPart)
-        
-        local boid = boidsService.Create(math.random(2, 5))
-        boid.Velocity = boidPart.CFrame.LookVector * boid.MaxSpeed
-        table.insert(boids, boid)
-        
-        runService.Heartbeat:Wait()
-    end
-end)
+local maxBoids = 500
+local targetPos = Vector3.new(0, -50, 0)
+local maxBounds = 160
 
 runService.Heartbeat:Connect(function(dt)
     boidsSolver.Solve(dt, boids, targetPos)
@@ -34,8 +21,27 @@ runService.Heartbeat:Connect(function(dt)
         boid:Update(dt)
 
         boidParts[i].Position = boid.Position
-        boidParts[i].Att1.Position = boid.Position.Unit + boid.Velocity.Unit * 5
-        boidParts[i].CFrame = CFrame.lookAlong(boid.Position, boid.Position + boid.Velocity, boidParts[i].CFrame.UpVector)
+        -- boidParts[i].Att1.Position = boid.Position.Unit + boid.Velocity.Unit * 5
+        boidParts[i].CFrame = CFrame.lookAt(boid.Position, boid.Position + boid.Velocity)
         boid:SetCFrame(boidParts[i].CFrame)
+
+        if boid.Position.Magnitude > maxBounds then -- escapers shall face the judgment
+            boidParts[i]:Destroy()
+            table.remove(boidParts, i)
+            table.remove(boids, i)
+        end
     end
 end)
+
+for i=0, maxBoids do
+    local boidPart : Part = replicatedStorage.Assets.Boid:Clone()
+    boidPart.Parent = workspace.Boids
+    table.insert(boidParts, boidPart)
+    
+    local boid = boidsService.Create(math.random(20, 30))
+    boid.Velocity = boidPart.CFrame.LookVector * boid.MaxSpeed
+    boid:SetCFrame(boidPart.CFrame)
+    table.insert(boids, boid)
+    
+    runService.Heartbeat:Wait()
+end

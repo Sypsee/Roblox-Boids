@@ -1,15 +1,19 @@
 local solver = {}
 
-local maxNeighbourRadius = 20
+local maxNeighbourRadius = 10
 local maxViewAngle = -0.5
-local maxViewRange = 5
-local cohesionFactor = 1.0
+local maxViewRange = 10
+local cohesionFactor = 0.1
 local alignmentFactor = 1.0
 local seprationFactor = 1.0
-local obstacleSeprationFactor = 10
-local targetFactor = 1.0
-local sepratingDistance = 1
-local maxSteeringSpeed = 3
+local obstacleSeprationFactor = 100
+local targetFactor = 0.2
+local sepratingDistance = 4
+local maxSteeringSpeed = 10
+
+local params = RaycastParams.new()
+params.FilterType = Enum.RaycastFilterType.Exclude
+params.FilterDescendantsInstances = {workspace.Boids}
 
 function isNan(n : number) : boolean
     return n ~= n
@@ -19,10 +23,11 @@ function isNanVec3(v : Vector3) : boolean
     return isNan(v.X) or isNan(v.Y) or isNan(v.Z)
 end
 
-function clampMagnitude(v : Vector3, maxMagnitude : number)
+function clampMagnitude(v : Vector3, minMagnitude : number, maxMagnitude : number)
     if v.Magnitude > maxMagnitude then
-        local scale = maxMagnitude / v.Magnitude
-        v *= scale
+        return v.Unit * maxMagnitude
+    elseif v.Magnitude < minMagnitude then
+        return v.Unit * minMagnitude
     end
     
     return v
@@ -49,7 +54,7 @@ function solver.GetDirections(numPoints : number) : {Vector3}
     return points
 end
 
-local directions = solver.GetDirections(300)
+local directions = solver.GetDirections(1000)
 
 function solver.FindUnobstructedDirection(boid) : Vector3
     local bestDir = boid.CFrame.LookVector
@@ -57,10 +62,10 @@ function solver.FindUnobstructedDirection(boid) : Vector3
 
     for i, _dir in directions do
         local dir : Vector3 = boid.CFrame:VectorToWorldSpace(_dir)
-        local res = workspace:Raycast(boid.Position, dir * maxViewRange)
+        local res = workspace:Raycast(boid.Position, _dir.Unit * maxViewRange, params)
         local isPathObstructed = res and res.Instance
 
-        if not isPathObstructed then
+        if not isPathObstructed and boid.CFrame.LookVector:Dot(dir) < 0 then
             bestDir = dir
             foundBest = true
             break
@@ -72,7 +77,7 @@ end
 
 function solver.SteerTowards(v : Vector3, velocity : Vector3, maxSpeed : number)
     local newV = v.Unit * maxSpeed - velocity
-    return clampMagnitude(newV, maxSteeringSpeed)
+    return clampMagnitude(newV, 0, maxSteeringSpeed)
 end
 
 function solver.Solve(dt : number, boids, target : Vector3)
@@ -88,7 +93,7 @@ function solver.Solve(dt : number, boids, target : Vector3)
             local diff = adjBoid.Position - boid.Position
             local dist = diff.Magnitude
             if _n == _m or dist > maxNeighbourRadius then continue end
-            if boid.Velocity:Dot(adjBoid.Velocity) < maxViewAngle then continue end
+            -- if boid.Velocity:Dot(adjBoid.Velocity) < maxViewAngle then continue end
             
             if dist <= sepratingDistance then
                 dir -= (diff / dist)
@@ -108,7 +113,7 @@ function solver.Solve(dt : number, boids, target : Vector3)
             end
         end
 
-        local ray = workspace:Raycast(boid.Position, boid.CFrame.LookVector * maxViewRange)
+        local ray = workspace:Raycast(boid.Position, boid.CFrame.LookVector * maxViewRange, params)
 
         if ray then
             local unobstructedDir, foundBest = solver.FindUnobstructedDirection(boid)
