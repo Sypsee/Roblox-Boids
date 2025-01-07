@@ -9,19 +9,19 @@ local DEF_MAX_VIEW_ANGLE = -1
 -- The max view range the boid can see for
 local DEF_MAX_VIEW_RANGE = 10
 -- This factor decides the tendency of boid to move at the center of a group
-local DEF_COHESION_FACTOR = 0.1
+local DEF_COHESION_FACTOR = 0.15
 -- This factor decides the tendency of boid to move aligned with other boids
-local DEF_ALIGNMENT_FACTOR = 1.0
+local DEF_ALIGNMENT_FACTOR = 1.1
 -- This factor decides the tendency of boid to move away from boids
-local DEF_SEPRATION_FACTOR = 1.0
+local DEF_SEPRATION_FACTOR = 0.85
 -- This factor decides the tendency of boid to avoid obstacles (MUST BE HIGH)
 local DEF_OBSTACLE_FACTOR = 100
 -- This factor decides the tendency of boid to move towards the target (MUST BE LOW)
-local DEF_TARGET_FACTOR = 0.2
+local DEF_TARGET_FACTOR = 0.1
 -- The distance between 2 boids to seprate them so they dont intersect
-local DEF_SEPRATING_DISTANCE = 4
+local DEF_SEPRATING_DISTANCE = 3
 -- The max speed for a boid when steering towards a new velocity
-local DEF_MAX_STEERING_SPEED = 10
+local DEF_MAX_STEERING_SPEED = 15
 -- Target point (the point towards the boid can go when not in group)
 local DEF_TARGET_POINT = Vector3.zero
 
