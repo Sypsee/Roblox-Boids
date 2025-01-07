@@ -10,12 +10,13 @@ type Boid = typeof(boidsService)
 local boids : {Boid} = {}
 local boidParts : {Part} = {}
 
-local maxBoids = 500
-local targetPos = Vector3.new(0, -50, 0)
+local maxBoids = 300
 local maxBounds = 160
 
+local solver = boidsSolver.Init()
+
 runService.Heartbeat:Connect(function(dt)
-    boidsSolver.Solve(dt, boids, targetPos)
+    solver:Solve(dt, boids)
 
     for i, boid in boids do
         boid:Update(dt)
