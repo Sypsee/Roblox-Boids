@@ -4,8 +4,8 @@ local utils = require(script.Parent.BoidUtils)
 
 -- The max distance between 2 boids to make then grouped
 local DEF_MAX_NEIGHBOUR_DISTANCE = 10
--- The max view angle for an boid to see in
-local DEF_MAX_VIEW_ANGLE = -0.8
+-- The max view angle for an boid to see in (-1 to disable, range [-1, 1])
+local DEF_MAX_VIEW_ANGLE = -1
 -- The max view range the boid can see for
 local DEF_MAX_VIEW_RANGE = 10
 -- This factor decides the tendency of boid to move at the center of a group
