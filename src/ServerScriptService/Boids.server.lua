@@ -1,3 +1,5 @@
+-- This is an example script on how you can create the boids
+
 local serverStorage = game:GetService("ServerStorage")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local runService = game:GetService("RunService")
@@ -22,7 +24,6 @@ runService.Heartbeat:Connect(function(dt)
         boid:Update(dt)
 
         boidParts[i].Position = boid.Position
-        -- boidParts[i].Att1.Position = boid.Position.Unit + boid.Velocity.Unit * 5
         boidParts[i].CFrame = CFrame.lookAt(boid.Position, boid.Position + boid.Velocity)
         boid:SetCFrame(boidParts[i].CFrame)
 

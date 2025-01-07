@@ -2,22 +2,35 @@ local solver = {}
 solver.__index = solver
 local utils = require(script.Parent.BoidUtils)
 
+-- The max distance between 2 boids to make then grouped
 local DEF_MAX_NEIGHBOUR_DISTANCE = 10
+-- The max view angle for an boid to see in
 local DEF_MAX_VIEW_ANGLE = -0.8
+-- The max view range the boid can see for
 local DEF_MAX_VIEW_RANGE = 10
+-- This factor decides the tendency of boid to move at the center of a group
 local DEF_COHESION_FACTOR = 0.1
+-- This factor decides the tendency of boid to move aligned with other boids
 local DEF_ALIGNMENT_FACTOR = 1.0
+-- This factor decides the tendency of boid to move away from boids
 local DEF_SEPRATION_FACTOR = 1.0
+-- This factor decides the tendency of boid to avoid obstacles (MUST BE HIGH)
 local DEF_OBSTACLE_FACTOR = 100
+-- This factor decides the tendency of boid to move towards the target (MUST BE LOW)
 local DEF_TARGET_FACTOR = 0.2
+-- The distance between 2 boids to seprate them so they dont intersect
 local DEF_SEPRATING_DISTANCE = 4
+-- The max speed for a boid when steering towards a new velocity
 local DEF_MAX_STEERING_SPEED = 10
+-- Target point (the point towards the boid can go when not in group)
 local DEF_TARGET_POINT = Vector3.zero
 
+-- The raycast params that decide the obstacles
 local DEF_PARAMS = RaycastParams.new()
 DEF_PARAMS.FilterType = Enum.RaycastFilterType.Exclude
 DEF_PARAMS.FilterDescendantsInstances = {workspace.Boids}
 
+-- The directions which a boid can look into to avoid obstacles
 local DIRECTIONS = utils.GetDirections(1000)
 
 function solver.Init()
