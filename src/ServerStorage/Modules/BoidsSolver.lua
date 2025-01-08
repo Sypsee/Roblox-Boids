@@ -16,6 +16,10 @@ local DEF_ALIGNMENT_FACTOR = 1.1
 local DEF_SEPRATION_FACTOR = 0.85
 -- This factor decides the tendency of boid to avoid obstacles (MUST BE HIGH)
 local DEF_OBSTACLE_FACTOR = 100
+-- This is more performance heavy but MUST BE used for enclosed spaces
+local DEF_RAYCAST_AVOIDANCE = false
+-- Dont change if using raycast avoidance (tells the distance after which obstacles should be avoided)
+local DEF_OBSTACLE_DISTANCE = 3
 -- This factor decides the tendency of boid to move towards the target (MUST BE LOW)
 local DEF_TARGET_FACTOR = 0.1
 -- The distance between 2 boids to seprate them so they dont intersect
@@ -31,10 +35,14 @@ DEF_PARAMS.FilterType = Enum.RaycastFilterType.Exclude
 DEF_PARAMS.FilterDescendantsInstances = {workspace.Boids}
 
 -- The directions which a boid can look into to avoid obstacles
-local DIRECTIONS = utils.GetDirections(1000)
+local DIRECTIONS = utils.GetDirections(300)
 
 local boidsParams = OverlapParams.new()
 boidsParams.FilterType = Enum.RaycastFilterType.Include
+boidsParams.FilterDescendantsInstances = {workspace.Boids}
+
+local obstacleParams = OverlapParams.new()
+boidsParams.FilterType = Enum.RaycastFilterType.Exclude
 boidsParams.FilterDescendantsInstances = {workspace.Boids}
 
 function solver.Init()
@@ -47,6 +55,8 @@ function solver.Init()
         alignmentFactor = DEF_ALIGNMENT_FACTOR,
         seprationFactor = DEF_SEPRATION_FACTOR,
         obstacleFactor = DEF_OBSTACLE_FACTOR,
+        raycastAvoidance = DEF_RAYCAST_AVOIDANCE,
+        obstacleDistance = DEF_OBSTACLE_DISTANCE,
         targetFactor = DEF_TARGET_FACTOR,
         sepratingDistance = DEF_SEPRATING_DISTANCE,
         maxSteeringSpeed = DEF_MAX_STEERING_SPEED,
@@ -56,23 +66,39 @@ function solver.Init()
     return self
 end
 
-function solver.FindUnobstructedDirection(boid, maxViewRange : number, rayParams : RaycastParams) : Vector3
+function solver.FindUnobstructedDirection(boid, maxViewRange : number, rayParams : RaycastParams, raycastAvoidance : boolean, obstacleRange : boolean?)
     local bestDir = boid.CFrame.LookVector
-    local foundBest = false
 
-    for i, _dir in DIRECTIONS do
-        local dir : Vector3 = boid.CFrame:VectorToWorldSpace(_dir)
-        local res = workspace:Raycast(boid.Position, _dir.Unit * maxViewRange, rayParams)
-        local isPathObstructed = res and res.Instance
+    if raycastAvoidance then
+        local foundBest = false
 
-        if not isPathObstructed and boid.CFrame.LookVector:Dot(dir) < 0.5 then
-            bestDir = dir
-            foundBest = true
-            break
+        for i, _dir in DIRECTIONS do
+            local dir : Vector3 = boid.CFrame:VectorToWorldSpace(_dir)
+            if boid.CFrame.LookVector:Dot(dir) > 0.5 then continue end
+
+            local res = workspace:Raycast(boid.Position, _dir.Unit * maxViewRange, rayParams)
+            local isPathObstructed = res and res.Instance
+
+            if not isPathObstructed then
+                bestDir = dir
+                foundBest = true
+                break
+            end
         end
-    end
 
-    return bestDir, foundBest
+        return bestDir, foundBest
+    else
+        local parts = workspace:GetPartBoundsInRadius(boid.Position, obstacleRange, obstacleParams)
+
+        for _, part in parts do
+            local diff = (part.Position - boid.Position)
+            if diff.Magnitude == 0 then continue end
+
+            bestDir -= diff.Unit / (diff.Magnitude)
+        end
+
+        return bestDir, #parts ~= 0
+    end
 end
 
 function solver.SteerTowards(v : Vector3, boid, maxSteeringSpeed : number)
@@ -131,10 +157,22 @@ function solver:Solve(dt : number, boids)
             end
         end
 
-        local ray = workspace:Raycast(boid.Position, boid.CFrame.LookVector * self.maxViewRange, self.rayParams)
+        if self.raycastAvoidance then
+            local ray = workspace:Raycast(boid.Position, boid.CFrame.LookVector * self.maxViewRange, self.rayParams)
 
-        if ray then
-            local unobstructedDir, foundBest = solver.FindUnobstructedDirection(boid, self.maxViewRange, self.rayParams)
+            if ray then
+                local unobstructedDir, foundBest = solver.FindUnobstructedDirection(boid, self.maxViewRange, self.rayParams, self.raycastAvoidance, self.obstacleDistance)
+
+                if foundBest then
+                    local unobstructedForce = solver.SteerTowards(unobstructedDir, boid, self.maxSteeringSpeed) * self.obstacleFactor
+
+                    if not utils.isNanVec3(unobstructedForce) then
+                        acceleration += unobstructedForce
+                    end
+                end
+            end
+        else
+            local unobstructedDir, foundBest = solver.FindUnobstructedDirection(boid, self.maxViewRange, self.rayParams, self.raycastAvoidance, self.obstacleDistance)
 
             if foundBest then
                 local unobstructedForce = solver.SteerTowards(unobstructedDir, boid, self.maxSteeringSpeed) * self.obstacleFactor
