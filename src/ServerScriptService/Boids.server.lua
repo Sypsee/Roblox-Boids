@@ -35,9 +35,10 @@ runService.Heartbeat:Connect(function(dt)
     end
 end)
 
-for i=0, maxBoids do
+for i=1, maxBoids do
     local boidPart : Part = replicatedStorage.Assets.Boid:Clone()
     boidPart.Parent = workspace.Boids
+    boidPart:SetAttribute("Index", i)
     table.insert(boidParts, boidPart)
     
     local boid = boidsService.Create(math.random(20, 30))

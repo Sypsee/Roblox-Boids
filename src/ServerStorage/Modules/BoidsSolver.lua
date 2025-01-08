@@ -33,6 +33,10 @@ DEF_PARAMS.FilterDescendantsInstances = {workspace.Boids}
 -- The directions which a boid can look into to avoid obstacles
 local DIRECTIONS = utils.GetDirections(1000)
 
+local boidsParams = OverlapParams.new()
+boidsParams.FilterType = Enum.RaycastFilterType.Include
+boidsParams.FilterDescendantsInstances = {workspace.Boids}
+
 function solver.Init()
     local self = setmetatable({
         rayParams = DEF_PARAMS,
@@ -61,7 +65,7 @@ function solver.FindUnobstructedDirection(boid, maxViewRange : number, rayParams
         local res = workspace:Raycast(boid.Position, _dir.Unit * maxViewRange, rayParams)
         local isPathObstructed = res and res.Instance
 
-        if not isPathObstructed and boid.CFrame.LookVector:Dot(dir) < 0 then
+        if not isPathObstructed and boid.CFrame.LookVector:Dot(dir) < 0.5 then
             bestDir = dir
             foundBest = true
             break
@@ -85,10 +89,28 @@ function solver:Solve(dt : number, boids)
         local sumAdjDir = Vector3.zero
         local adjBoids = 0
 
-        for _m, adjBoid in boids do
+        -- for _m, adjBoid in boids do
+        --     local diff = adjBoid.Position - boid.Position
+        --     local dist = diff.Magnitude
+        --     if _n == _m or dist > self.maxNeighbourDist then continue end
+        --     if boid.Velocity:Dot(adjBoid.Velocity) < self.maxViewAngle then continue end
+            
+        --     if dist <= self.sepratingDistance then
+        --         dir -= (diff / dist)
+        --     end
+
+        --     adjBoids += 1
+        --     sumAdjPos += adjBoid.Position
+        --     sumAdjDir += adjBoid.Velocity
+        -- end
+
+        for _m, part in workspace:GetPartBoundsInRadius(boid.Position, self.maxNeighbourDist, boidsParams) do
+            local adjBoid = boids[part:GetAttribute("Index")]
+            if adjBoid == nil then continue end
+
             local diff = adjBoid.Position - boid.Position
             local dist = diff.Magnitude
-            if _n == _m or dist > self.maxNeighbourDist then continue end
+            if _n == part:GetAttribute("Index")then continue end
             if boid.Velocity:Dot(adjBoid.Velocity) < self.maxViewAngle then continue end
             
             if dist <= self.sepratingDistance then
