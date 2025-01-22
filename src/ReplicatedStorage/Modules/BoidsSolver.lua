@@ -7,25 +7,25 @@ local DEF_MAX_NEIGHBOUR_DISTANCE = 10
 -- The max view angle for an boid to see in (-1 to disable, range [-1, 1])
 local DEF_MAX_VIEW_ANGLE = -1
 -- The max view range the boid can see for
-local DEF_MAX_VIEW_RANGE = 10
+local DEF_MAX_VIEW_RANGE = 5
 -- This factor decides the tendency of boid to move at the center of a group
-local DEF_COHESION_FACTOR = 0.15
+local DEF_COHESION_FACTOR = 0.1
 -- This factor decides the tendency of boid to move aligned with other boids
-local DEF_ALIGNMENT_FACTOR = 1.1
+local DEF_ALIGNMENT_FACTOR = 1
 -- This factor decides the tendency of boid to move away from boids
-local DEF_SEPRATION_FACTOR = 0.85
+local DEF_SEPRATION_FACTOR = 1
 -- This factor decides the tendency of boid to avoid obstacles (MUST BE HIGH)
 local DEF_OBSTACLE_FACTOR = 100
 -- This is more performance heavy but MUST BE used for enclosed spaces
-local DEF_RAYCAST_AVOIDANCE = false
+local DEF_RAYCAST_AVOIDANCE = true
 -- Dont change if using raycast avoidance (tells the distance after which obstacles should be avoided)
 local DEF_OBSTACLE_DISTANCE = 3
 -- This factor decides the tendency of boid to move towards the target (MUST BE LOW)
-local DEF_TARGET_FACTOR = 0.1
+local DEF_TARGET_FACTOR = 0.2
 -- The distance between 2 boids to seprate them so they dont intersect
 local DEF_SEPRATING_DISTANCE = 3
 -- The max speed for a boid when steering towards a new velocity
-local DEF_MAX_STEERING_SPEED = 15
+local DEF_MAX_STEERING_SPEED = 10
 -- Target point (the point towards the boid can go when not in group)
 local DEF_TARGET_POINT = Vector3.zero
 
@@ -131,12 +131,13 @@ function solver:Solve(dt : number, boids)
         -- end
 
         for _m, part in workspace:GetPartBoundsInRadius(boid.Position, self.maxNeighbourDist, boidsParams) do
-            local adjBoid = boids[part:GetAttribute("Index")]
+            local adjBoidIndex = tonumber(part.Name)
+            local adjBoid = boids[adjBoidIndex]
             if adjBoid == nil then continue end
 
             local diff = adjBoid.Position - boid.Position
             local dist = diff.Magnitude
-            if _n == part:GetAttribute("Index")then continue end
+            if _n == adjBoidIndex then continue end
             if boid.Velocity:Dot(adjBoid.Velocity) < self.maxViewAngle then continue end
             
             if dist <= self.sepratingDistance then
