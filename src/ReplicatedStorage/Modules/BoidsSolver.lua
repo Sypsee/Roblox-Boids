@@ -2,12 +2,14 @@ local solver = {}
 solver.__index = solver
 local utils = require(script.Parent.BoidUtils)
 
+-- DEF -> DEFAULT
+
 -- The max distance between 2 boids to make then grouped
-local DEF_MAX_NEIGHBOUR_DISTANCE = 10
+local DEF_MAX_NEIGHBOUR_DISTANCE = 15
 -- The max view angle for an boid to see in (-1 to disable, range [-1, 1])
 local DEF_MAX_VIEW_ANGLE = -1
 -- The max view range the boid can see for
-local DEF_MAX_VIEW_RANGE = 5
+local DEF_MAX_VIEW_RANGE = 7
 -- This factor decides the tendency of boid to move at the center of a group
 local DEF_COHESION_FACTOR = 0.1
 -- This factor decides the tendency of boid to move aligned with other boids
@@ -15,17 +17,17 @@ local DEF_ALIGNMENT_FACTOR = 1
 -- This factor decides the tendency of boid to move away from boids
 local DEF_SEPRATION_FACTOR = 1
 -- This factor decides the tendency of boid to avoid obstacles (MUST BE HIGH)
-local DEF_OBSTACLE_FACTOR = 100
+local DEF_OBSTACLE_FACTOR = 120
 -- This is more performance heavy but MUST BE used for enclosed spaces
 local DEF_RAYCAST_AVOIDANCE = true
 -- Dont change if using raycast avoidance (tells the distance after which obstacles should be avoided)
-local DEF_OBSTACLE_DISTANCE = 3
+local DEF_OBSTACLE_DISTANCE = 5
 -- This factor decides the tendency of boid to move towards the target (MUST BE LOW)
-local DEF_TARGET_FACTOR = 0.2
+local DEF_TARGET_FACTOR = 0.02
 -- The distance between 2 boids to seprate them so they dont intersect
 local DEF_SEPRATING_DISTANCE = 3
 -- The max speed for a boid when steering towards a new velocity
-local DEF_MAX_STEERING_SPEED = 10
+local DEF_MAX_STEERING_SPEED = 12
 -- Target point (the point towards the boid can go when not in group)
 local DEF_TARGET_POINT = Vector3.zero
 
@@ -42,8 +44,40 @@ boidsParams.FilterType = Enum.RaycastFilterType.Include
 boidsParams.FilterDescendantsInstances = {workspace.Boids}
 
 local obstacleParams = OverlapParams.new()
-boidsParams.FilterType = Enum.RaycastFilterType.Exclude
-boidsParams.FilterDescendantsInstances = {workspace.Boids}
+obstacleParams.FilterType = Enum.RaycastFilterType.Exclude
+obstacleParams.FilterDescendantsInstances = {workspace.Boids}
+
+export type solver = typeof(solver) & {
+	rayParams: RaycastParams,
+	maxNeighbourDist: number,
+	maxViewAngle: number,
+	maxViewRange: number,
+	cohesionFactor: number,
+	alignmentFactor: number,
+	seprationFactor: number,
+	obstacleFactor: number,
+	raycastAvoidance: boolean,
+	obstacleDistance: number,
+	targetFactor: number,
+	sepratingDistance: number,
+	maxSteeringSpeed: number,
+	target: Vector3
+}
+
+type Boid = {
+	Position : Vector3,
+	_CFrame : CFrame,
+	Velocity : Vector3,
+	MaxSpeed : number,
+	Accelerate : (self, force : Vector3) -> ()
+}
+
+-- NOTE: Boid is a custom object not A ROBLOX INSTANCE
+-- This makes the code thread safe and easier to customize according to ones needs
+-- There is no dependency of roblox instances so idk what you were calling deprecated
+-- This is multi-threaded using actors to give out the most performance
+-- I dont think I would like to make my code MORE THEN 200 loc which is useless destroys simplicity and modularity in my case
+
 
 function solver.Init()
     local self = setmetatable({
@@ -66,80 +100,100 @@ function solver.Init()
     return self
 end
 
-function solver.FindUnobstructedDirection(boid, maxViewRange : number, rayParams : RaycastParams, raycastAvoidance : boolean, obstacleRange : boolean?)
-    local bestDir = boid.CFrame.LookVector
+-- A simple function which steers towards the given direction v
+-- Clamps the magnitude or speed to the maxSpeed
+function solver.SteerTowards(v : Vector3, boid, maxSteeringSpeed : number) : Vector3
+	local newV = v.Unit * boid.MaxSpeed - boid.Velocity
+	return utils.clampMagnitude(newV, 0, maxSteeringSpeed)
+end
 
-    if raycastAvoidance then
+
+--[[
+Checks through a list of possible directions in a unit sphere and raycasts there
+if Is path obstructed? if no then select that dir and move there
+else find another dir
+]]
+function solver.FindUnobstructedDirection(self : solver, boid : Boid) : (Vector3, boolean?)
+    local bestDir = boid._CFrame.LookVector
+	
+    if self.raycastAvoidance then
         local foundBest = false
 
         for i, _dir in DIRECTIONS do
-            local dir : Vector3 = boid.CFrame:VectorToWorldSpace(_dir)
-            if boid.CFrame.LookVector:Dot(dir) > 0.5 then continue end
+            local dir : Vector3 = boid._CFrame:VectorToWorldSpace(_dir)
+            if boid._CFrame.LookVector:Dot(dir) > 0.5 then continue end
 
-            local res = workspace:Raycast(boid.Position, _dir.Unit * maxViewRange, rayParams)
+            local res = workspace:Raycast(boid.Position, _dir.Unit * self.maxViewRange, self.rayParams)
             local isPathObstructed = res and res.Instance
 
-            if not isPathObstructed then
-                bestDir = dir
-                foundBest = true
-                break
-            end
+            if isPathObstructed then continue end
+			
+			bestDir = dir
+			foundBest = true
+			break
         end
 
         return bestDir, foundBest
-    else
-        local parts = workspace:GetPartBoundsInRadius(boid.Position, obstacleRange, obstacleParams)
+	end
+	
+	local parts = workspace:GetPartBoundsInRadius(boid.Position, self.obstacleDistance, obstacleParams)
 
-        for _, part in parts do
-            local diff = (part.Position - boid.Position)
-            if diff.Magnitude == 0 then continue end
+	for _, part in parts do
+		local diff = (part.Position - boid.Position)
+		if diff.Magnitude == 0 then continue end
 
-            bestDir -= diff.Unit / (diff.Magnitude)
-        end
+		bestDir -= diff.Unit / (diff.Magnitude)
+	end
 
-        return bestDir, #parts ~= 0
-    end
+	return bestDir, #parts ~= 0
 end
 
-function solver.SteerTowards(v : Vector3, boid, maxSteeringSpeed : number)
-    local newV = v.Unit * boid.MaxSpeed - boid.Velocity
-    return utils.clampMagnitude(newV, 0, maxSteeringSpeed)
+-- Shoot a ray in front to check for any possible obstructions in the path
+-- If yes then call the FindUnobstructedDirection function to get new path
+function solver.CheckForObstruction(self: solver, boid : Boid) : Vector3
+	if self.raycastAvoidance then
+		local ray = workspace:Raycast(boid.Position, boid._CFrame.LookVector * self.maxViewRange, self.rayParams)
+		if not ray then return Vector3.zero end
+		
+		local unobstructedDir, foundBest = solver.FindUnobstructedDirection(self, boid)
+		local unobstructedForce = solver.SteerTowards(unobstructedDir, boid, self.maxSteeringSpeed) * self.obstacleFactor
+		if not foundBest or utils.isNanVec3(unobstructedForce) then return Vector3.zero end
+		
+		return unobstructedForce
+	else
+		local unobstructedDir, foundBest = solver.FindUnobstructedDirection(self, boid)
+		local unobstructedForce = solver.SteerTowards(unobstructedDir, boid, self.maxSteeringSpeed) * self.obstacleFactor
+		if not foundBest or utils.isNanVec3(unobstructedForce) then return Vector3.zero end
+		
+		return unobstructedForce
+	end
 end
 
-function solver:Solve(dt : number, boids)
-    for _n, boid in boids do
+function solver:Solve(dt : number, boids : {Boid}, allBoids : {Boid})
+	for _n=1, SharedTable.size(boids) do
+		local boid = boids[_n]
+		if not boid then continue end
+
         local acceleration = Vector3.zero
         local dir = Vector3.zero
 
         local sumAdjPos = Vector3.zero
         local sumAdjDir = Vector3.zero
-        local adjBoids = 0
-
-        -- for _m, adjBoid in boids do
-        --     local diff = adjBoid.Position - boid.Position
-        --     local dist = diff.Magnitude
-        --     if _n == _m or dist > self.maxNeighbourDist then continue end
-        --     if boid.Velocity:Dot(adjBoid.Velocity) < self.maxViewAngle then continue end
-            
-        --     if dist <= self.sepratingDistance then
-        --         dir -= (diff / dist)
-        --     end
-
-        --     adjBoids += 1
-        --     sumAdjPos += adjBoid.Position
-        --     sumAdjDir += adjBoid.Velocity
-        -- end
-
+		local adjBoids = 0
+		
+		-- Loop through all other neighbouring boids and do some checks like viewRange then
+		-- Add the all the other boids Velocities and Positions to variables like sumAdjPos and sumAdjDir
+		-- Increment the adjBoids
         for _m, part in workspace:GetPartBoundsInRadius(boid.Position, self.maxNeighbourDist, boidsParams) do
-            local adjBoidIndex = tonumber(part.Name)
-            local adjBoid = boids[adjBoidIndex]
-            if adjBoid == nil then continue end
-
-            local diff = adjBoid.Position - boid.Position
-            local dist = diff.Magnitude
-            if _n == adjBoidIndex then continue end
+			local adjBoidIndex = tonumber(part.Name)
+			if _n == adjBoidIndex then continue end
+			
+			local adjBoid = allBoids[adjBoidIndex]
             if boid.Velocity:Dot(adjBoid.Velocity) < self.maxViewAngle then continue end
-            
+			
+			local diff = adjBoid.Position - boid.Position
+			local dist = diff.Magnitude
+			
             if dist <= self.sepratingDistance then
                 dir -= (diff / dist)
             end
@@ -148,7 +202,9 @@ function solver:Solve(dt : number, boids)
             sumAdjPos += adjBoid.Position
             sumAdjDir += adjBoid.Velocity
         end
-
+		
+		-- If the boid is not in much crowd then we can gather them all at a TARGET_POINT
+		-- which will make them together again
         if self.target then
             local diff = self.target - boid.Position
             local targetForce = solver.SteerTowards(diff, boid, self.maxSteeringSpeed) / (adjBoids + 1) * self.targetFactor
@@ -158,32 +214,12 @@ function solver:Solve(dt : number, boids)
             end
         end
 
-        if self.raycastAvoidance then
-            local ray = workspace:Raycast(boid.Position, boid.CFrame.LookVector * self.maxViewRange, self.rayParams)
-
-            if ray then
-                local unobstructedDir, foundBest = solver.FindUnobstructedDirection(boid, self.maxViewRange, self.rayParams, self.raycastAvoidance, self.obstacleDistance)
-
-                if foundBest then
-                    local unobstructedForce = solver.SteerTowards(unobstructedDir, boid, self.maxSteeringSpeed) * self.obstacleFactor
-
-                    if not utils.isNanVec3(unobstructedForce) then
-                        acceleration += unobstructedForce
-                    end
-                end
-            end
-        else
-            local unobstructedDir, foundBest = solver.FindUnobstructedDirection(boid, self.maxViewRange, self.rayParams, self.raycastAvoidance, self.obstacleDistance)
-
-            if foundBest then
-                local unobstructedForce = solver.SteerTowards(unobstructedDir, boid, self.maxSteeringSpeed) * self.obstacleFactor
-
-                if not utils.isNanVec3(unobstructedForce) then
-                    acceleration += unobstructedForce
-                end
-            end
-        end
-
+		acceleration += solver.CheckForObstruction(self, boid)
+		
+		-- If the adjBoids are more then 0 then we can add the flock behaviour forces
+		-- like cohesion, sepration and alignment
+		-- Here we steer the boids towards the avg pos(center of group) and avg dir of the neighbouring boids
+		-- We then add a seprationForce to avoid them from getting too close
         if adjBoids > 0 then
             local avgPos = sumAdjPos / adjBoids
             local avgDir = sumAdjDir / adjBoids
@@ -202,12 +238,15 @@ function solver:Solve(dt : number, boids)
             end
             if not utils.isNanVec3(seprationForce) then
                 acceleration += seprationForce
-            end
+			end
         end
 
-        if not utils.isNanVec3(acceleration) then
-            boid:Accelerate(acceleration * dt)
-        end
+		if utils.isNanVec3(acceleration) then return end
+		
+		-- Finally we can call the accelerate function of our custom boid object with all the forces applied
+		-- accel * dt -> velocity
+		boid.Velocity += acceleration * dt
+		boid.Velocity = utils.clampMagnitude(boid.Velocity, 1, boid.MaxSpeed)
     end
 end
 
