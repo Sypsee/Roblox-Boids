@@ -2,6 +2,22 @@ local solver = {}
 solver.__index = solver
 local utils = require(script.Parent.BoidUtils)
 
+--[[
+	This is a custom roblox boids solution
+	it works by having "groups" of boids
+	which can be handled by a actor for each group
+	this ensures high performance.
+	A shared table is being used for data sharing between different actors
+	this decreases the performance massively so it is advised to not.
+	Structure ->
+	Boids.client.lua -> creates workers[actors] & holds onto the shared table
+	-> script under actor creates boid objects and run the solver[this]
+	in heartbeat, the shared table is shared among all the actors,
+	a block of data is shallow copied and rearranged for that actor
+	this data of boids is passed to solver and is worked upon.
+	**If you want to truly understand how the solver works please do your own research in this topic.**
+]]
+
 -- DEF -> DEFAULT
 
 -- The max distance between 2 boids to make then grouped
@@ -72,13 +88,6 @@ type Boid = {
 	Accelerate : (self, force : Vector3) -> ()
 }
 
--- NOTE: Boid is a custom object not A ROBLOX INSTANCE
--- This makes the code thread safe and easier to customize according to ones needs
--- There is no dependency of roblox instances so idk what you were calling deprecated
--- This is multi-threaded using actors to give out the most performance
--- I dont think I would like to make my code MORE THEN 200 loc which is useless destroys simplicity and modularity in my case
-
-
 function solver.Init()
     local self = setmetatable({
         rayParams = DEF_PARAMS,
@@ -100,8 +109,12 @@ function solver.Init()
     return self
 end
 
--- A simple function which steers towards the given direction v
--- Clamps the magnitude or speed to the maxSpeed
+--[[
+Take the input target velocity(v) and change its magnitude to MaxSpeed of a boid,
+Calculate a vector pointing from boid's currentVelocity to targetVelocity,
+Clamps the magnitude or speed of targetVelocity to the maxSteeringSpeed
+return it
+]]
 function solver.SteerTowards(v : Vector3, boid, maxSteeringSpeed : number) : Vector3
 	local newV = v.Unit * boid.MaxSpeed - boid.Velocity
 	return utils.clampMagnitude(newV, 0, maxSteeringSpeed)
@@ -109,9 +122,16 @@ end
 
 
 --[[
+-- Raycast method
+*the list of possible directions contain equidistant points on a unit sphere*
 Checks through a list of possible directions in a unit sphere and raycasts there
 if Is path obstructed? if no then select that dir and move there
 else find another dir
+-- Spatial method
+Loop through all the obstacles and create a vector from boidPosition to partPosition
+Divide the vector by magnitude^2 to get a smaller vector and then
+create a vector from that small vector to current bestDir(default -> LookVector)
+this will give a vector pointing away from the obstacle
 ]]
 function solver.FindUnobstructedDirection(self : solver, boid : Boid) : (Vector3, boolean?)
     local bestDir = boid._CFrame.LookVector
@@ -169,7 +189,32 @@ function solver.CheckForObstruction(self: solver, boid : Boid) : Vector3
 	end
 end
 
-function solver:Solve(dt : number, boids : {Boid}, allBoids : {Boid})
+--[[
+pi / n -> this divides the circle into n sectors
+we take the angle by this formula in radians and multiply it by boidIndex to get a unique value.
+https://mathinsight.org/media/image/image/spherical_coordinates_cartesian.png
+this image shows why we use sine and cosine.
+this creates a unique position of boids.
+]]
+function solver:GetFormationTargetPosition(boidIndex: number, totalBoids: number) : Vector3
+    local formationPosition = Vector3.zero
+    local angle = math.pi / (totalBoids + 1) * boidIndex
+    local distanceFromLeader = 3
+    formationPosition = Vector3.new(math.sin(angle) * distanceFromLeader, 0, math.cos(angle) * distanceFromLeader)
+    return formationPosition
+end
+
+--[[
+Get the targetPosition of boid from GetFormationTargetPosition
+Steer towards it
+]]
+function solver:MaintainFormation(boid: Boid, boidIndex: number, neighbouringBoids : number)
+    local targetPosition = self:GetFormationTargetPosition(boidIndex, neighbouringBoids)
+    local accel = solver.SteerTowards(targetPosition, boid, self.maxSteeringSpeed) * self.cohesionFactor
+    return accel
+end
+
+function solver:Solve(dt : number, boids : SharedTable, allBoids : SharedTable)
 	for _n=1, SharedTable.size(boids) do
 		local boid = boids[_n]
 		if not boid then continue end
@@ -195,15 +240,18 @@ function solver:Solve(dt : number, boids : {Boid}, allBoids : {Boid})
 			local dist = diff.Magnitude
 			
             if dist <= self.sepratingDistance then
-                dir -= (diff / dist)
+                dir -= (diff / dist) -- only the direction no magnitude
             end
 
             adjBoids += 1
             sumAdjPos += adjBoid.Position
             sumAdjDir += adjBoid.Velocity
         end
+
+		local formationAccel = solver.MaintainFormation(self, boid, _n, adjBoids)
+		if not utils.isNanVec3(formationAccel) then acceleration += formationAccel end
 		
-		-- If the boid is not in much crowd then we can gather them all at a TARGET_POINT
+		-- If the boid is not in much crowd then we can steer it towrads TARGET_POINT
 		-- which will make them together again
         if self.target then
             local diff = self.target - boid.Position
@@ -216,10 +264,13 @@ function solver:Solve(dt : number, boids : {Boid}, allBoids : {Boid})
 
 		acceleration += solver.CheckForObstruction(self, boid)
 		
-		-- If the adjBoids are more then 0 then we can add the flock behaviour forces
-		-- like cohesion, sepration and alignment
-		-- Here we steer the boids towards the avg pos(center of group) and avg dir of the neighbouring boids
-		-- We then add a seprationForce to avoid them from getting too close
+		--[[
+		If the adjBoids are more then 0 then we can add the flock behaviour forces
+		like cohesion[ towrads the avg position of crowd ], sepration[ away from each other if too close ] and
+		alignment[ towrads the average direction of crowd ]
+		Here we steer the boids towards the avg pos(center of group) and avg dir of the neighbouring boids
+		We then add a seprationForce to avoid them from getting too close
+		]]
         if adjBoids > 0 then
             local avgPos = sumAdjPos / adjBoids
             local avgDir = sumAdjDir / adjBoids
