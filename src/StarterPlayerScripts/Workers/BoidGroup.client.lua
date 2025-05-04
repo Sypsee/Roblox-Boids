@@ -26,10 +26,6 @@ script.Parent:BindToMessageParallel("Create", function(boids : SharedTable, boid
 		actorBoids[i] = nil
 	end
 	
-	for i=1, SharedTable.size(actorBoids) do
-		print(actorBoids[i]) -- at the end there are (boidsPerWorker) number of nils
-	end
-	
 	local index = 1
 	
 	-- Shift them to start

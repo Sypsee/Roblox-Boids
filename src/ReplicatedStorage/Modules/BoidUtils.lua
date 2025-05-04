@@ -5,7 +5,7 @@ function utils.isNan(n : number) : boolean
 end
 
 function utils.isNanVec3(v : Vector3) : boolean
-    return utils.isNan(v.X) or utils.isNan(v.Y) or utils.isNan(v.Z)
+    return v ~= v
 end
 
 function utils.clampMagnitude(v : Vector3, minMagnitude : number, maxMagnitude : number)
